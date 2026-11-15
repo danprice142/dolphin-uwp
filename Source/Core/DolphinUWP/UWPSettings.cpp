@@ -5,8 +5,8 @@
 
 namespace Config
 {
-// Ocean Blue.
-const Info<int> UWP_THEME{{System::Main, "UWP", "Theme"}, 2};
+// Violet.
+const Info<int> UWP_THEME{{System::Main, "UWP", "Theme"}, 5};
 const Info<bool> UWP_SHOW_ACTION_HINTS{{System::Main, "UWP", "ShowActionHints"}, true};
 const Info<bool> UWP_ANIMATE_LAUNCHES{{System::Main, "UWP", "AnimateLaunches"}, true};
 const Info<int> UWP_STATE_SLOT{{System::Main, "UWP", "StateSlot"}, 1};

@@ -2706,9 +2706,9 @@ InputMappingHost::WiiRemoteOptions InputMappingHost::GetWiiRemoteOptions(int pla
   if (!game_id.empty() && Core::System::GetInstance().IsWii())
   {
     bool explicit_user_none = false;
+    std::string saved_ext;
     if (const auto title_sec = ReadTitleSection(ControllerType::WiiRemote, player, game_id))
     {
-      std::string saved_ext;
       if (title_sec->Get("Extension", &saved_ext, "") && saved_ext == "None" &&
           title_sec->Exists("Extension"))
       {
@@ -2718,7 +2718,15 @@ InputMappingHost::WiiRemoteOptions InputMappingHost::GetWiiRemoteOptions(int pla
 
     if (!explicit_user_none && (extension == "None" || extension.empty()))
     {
-      const ControllerPreference pref = GetWiiControllerPreference(game_id);
+      ControllerPreference pref = GetWiiControllerPreference(game_id);
+      if (!saved_ext.empty() && saved_ext != "None")
+      {
+        if (saved_ext == "Classic")
+          pref = ControllerPreference::Classic;
+        else if (saved_ext == "Nunchuk")
+          pref = ControllerPreference::WiiRemoteNunchuk;
+      }
+
       if (pref == ControllerPreference::Classic)
       {
         extension = "Classic";

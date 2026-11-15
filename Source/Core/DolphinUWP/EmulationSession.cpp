@@ -145,6 +145,8 @@ bool EmulationSession::Start(std::unique_ptr<BootParameters> boot, std::string t
   m_title = std::move(title);
   m_menu.SetTitle(m_title);
   m_title_game_id.clear();
+  m_wii_extension_sync_frame = 0;
+  m_wii_extension_synced = false;
   m_core_stopped = false;
   m_finished = false;
   m_stop_requested = false;
@@ -253,6 +255,20 @@ void EmulationSession::Update(const FrameInput& input, bool quick_menu_requested
   {
     m_previous_input = input;
     return;
+  }
+
+  if (m_active && system.IsWii() && Core::IsRunning(system) && m_overlay == Overlay::None &&
+      !m_wii_extension_synced)
+  {
+    ++m_wii_extension_sync_frame;
+    if (m_wii_extension_sync_frame >= 30)
+    {
+      m_wii_extension_synced = true;
+      for (int player = 0; player < 4; ++player)
+      {
+        InputMappingHost::GetWiiRemoteOptions(player);
+      }
+    }
   }
 
   m_menu.Update();
@@ -464,6 +480,8 @@ void EmulationSession::OnTitleChanged()
     return;
   const bool is_new_game = m_title_game_id != game_id;
   m_title_game_id = game_id;
+  m_wii_extension_sync_frame = 0;
+  m_wii_extension_synced = false;
   InputMappingHost::OnGameStarted(game_id);
   const std::string description = config.GetTitleDescription();
   if (!is_new_game || description.empty())
