@@ -307,6 +307,7 @@ void SConfig::OnESTitleChanged()
   }
 
   ReloadTextures(system);
+  Host_TitleChanged();
 }
 
 void SConfig::OnTitleDirectlyBooted(const Core::CPUThreadGuard& guard)

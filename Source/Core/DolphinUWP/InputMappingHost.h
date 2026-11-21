@@ -80,6 +80,10 @@ public:
   // Plays a gamepad that connected as the player with its number: gives the player the default
   // mappings of the gamepad when they have none, and plugs in their controller and Wii Remote.
   static void AssignGamepad(int player, const std::string& device);
+  // Unplugs the controller and Wii Remote when a gamepad disconnects.
+  static void DisconnectGamepad(int player);
+  // Configures controller ports and defaults according to the running game's compatibility.
+  static void OnGameStarted(const std::string& game_id);
   // Installs from before the integrated GBA have no Game Boy Advance mappings. Gives each player
   // with a gamepad the default GBA mapping of that gamepad, as a new install has.
   static void AddMissingGBAMappings();

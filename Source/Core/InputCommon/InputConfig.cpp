@@ -67,55 +67,56 @@ bool InputConfig::LoadConfig()
     }
   }
 
-  if (inifile.Load(File::GetUserPath(D_CONFIG_IDX) + m_ini_name + ".ini") &&
-      !inifile.GetSections().empty())
+  const bool inifile_loaded =
+      inifile.Load(File::GetUserPath(D_CONFIG_IDX) + m_ini_name + ".ini") &&
+      !inifile.GetSections().empty();
+
+  int n = 0;
+  for (auto& controller : m_controllers)
   {
-    int n = 0;
-
-    for (auto& controller : m_controllers)
+    Common::IniFile::Section config;
+    bool loaded = false;
+    if (n < MAX_BBMOTES && useProfile[n])
     {
-      Common::IniFile::Section config;
-      // Load settings from ini
-      if (useProfile[n])
-      {
-        std::string base;
-        SplitPath(profile[n], nullptr, &base, nullptr);
-        Core::DisplayMessage("Loading game specific input profile '" + base + "' for device '" +
-                                 controller->GetName() + "'",
-                             6000);
+      std::string base;
+      SplitPath(profile[n], nullptr, &base, nullptr);
+      Core::DisplayMessage("Loading game specific input profile '" + base + "' for device '" +
+                               controller->GetName() + "'",
+                           6000);
 
-        inifile.Load(profile[n]);
-        config = *inifile.GetOrCreateSection("Profile");
-      }
-      else
+      Common::IniFile profile_ini;
+      if (profile_ini.Load(profile[n]))
       {
-        config = *inifile.GetOrCreateSection(controller->GetName());
+        config = *profile_ini.GetOrCreateSection("Profile");
+        loaded = true;
       }
+    }
+
+    if (!loaded && inifile_loaded)
+    {
+      config = *inifile.GetOrCreateSection(controller->GetName());
+      loaded = true;
+    }
+
+    if (loaded)
+    {
       controller->LoadConfig(&config);
       controller->UpdateReferences(g_controller_interface);
+    }
+    else
+    {
+      // Only load the default profile for the first controller and clear the others,
+      // otherwise they would all share the same mappings on the same (default) device
+      if (n == 0)
+        controller->LoadDefaults(g_controller_interface);
+      else
+        controller->EmulatedController::LoadDefaults(g_controller_interface);
+      controller->UpdateReferences(g_controller_interface);
+    }
 
-      // Next profile
-      n++;
-    }
-    return true;
+    n++;
   }
-  else
-  {
-    // Only load the default profile for the first controller and clear the others,
-    // otherwise they would all share the same mappings on the same (default) device
-    if (m_controllers.size() > 0)
-    {
-      m_controllers[0]->LoadDefaults(g_controller_interface);
-      m_controllers[0]->UpdateReferences(g_controller_interface);
-    }
-    for (size_t i = 1; i < m_controllers.size(); ++i)
-    {
-      // Calling the base version just clears all settings without overwriting them with a default
-      m_controllers[i]->EmulatedController::LoadDefaults(g_controller_interface);
-      m_controllers[i]->UpdateReferences(g_controller_interface);
-    }
-    return false;
-  }
+  return inifile_loaded;
 }
 
 void InputConfig::SaveConfig()

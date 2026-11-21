@@ -205,6 +205,8 @@ private:
   bool m_stop_requested = false;
   bool m_stop_confirming = false;
   std::string m_title_game_id;
+  int m_wii_extension_sync_frame = 0;
+  bool m_wii_extension_synced = false;
   bool m_paused_by_menu = false;
   bool m_paused_by_suspend = false;
   bool m_paused_by_user = false;

@@ -81,13 +81,13 @@ void Attachments::SaveConfig(Common::IniFile::Section* sec, const std::string& b
 
   if (GetSelectionSetting().IsSimpleValue())
   {
-    sec->Set(base + name, GetAttachmentList()[GetSelectedAttachment()]->GetName(), "None");
+    sec->Set(base + name, GetAttachmentList()[GetSelectedAttachment()]->GetName());
   }
   else
   {
     std::string expression = GetSelectionSetting().GetInputReference().GetExpression();
     ReplaceBreaksWithSpaces(expression);
-    sec->Set(base + name, expression, "None");
+    sec->Set(base + name, expression);
   }
 
   for (auto& ai : GetAttachmentList())

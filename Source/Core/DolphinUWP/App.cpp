@@ -964,6 +964,10 @@ private:
           InputMappingHost::ApplyDefaultGamepadMappings(0, devices[0]);
         InputMappingHost::AssignGamepad(static_cast<int>(player), devices[player]);
       }
+      else if (!connected && m_gamepad_connected[player] && player > 0)
+      {
+        InputMappingHost::DisconnectGamepad(static_cast<int>(player));
+      }
       m_gamepad_connected[player] = connected;
     }
   }

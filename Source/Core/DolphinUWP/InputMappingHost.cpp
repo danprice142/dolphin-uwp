@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinUWP/InputMappingHost.h"
+#include "DolphinUWP/WiiControllerDatabase.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
 #include <span>
 #include <utility>
 
@@ -295,8 +297,8 @@ constexpr std::array GBA_GAMEPAD{
 
 constexpr std::array GAMECUBE_GAMEPAD{
     Binding{"Buttons/A", "`Button A`"},
-    Binding{"Buttons/B", "`Button B`"},
-    Binding{"Buttons/X", "`Button X`"},
+    Binding{"Buttons/B", "`Button X`"},
+    Binding{"Buttons/X", "`Button B`"},
     Binding{"Buttons/Y", "`Button Y`"},
     Binding{"Buttons/Z", "`Bumper R`"},
     Binding{"Buttons/Start", "Menu"},
@@ -308,7 +310,7 @@ constexpr std::array GAMECUBE_GAMEPAD{
     Binding{"C-Stick/Down", "`Right Y-`"},
     Binding{"C-Stick/Left", "`Right X-`"},
     Binding{"C-Stick/Right", "`Right X+`"},
-    Binding{"Triggers/L", "`Trigger L`"},
+    Binding{"Triggers/L", "`Trigger L`| `Bumper L`"},
     Binding{"Triggers/R", "`Trigger R`"},
     Binding{"Triggers/L-Analog", "`Trigger L`"},
     Binding{"Triggers/R-Analog", "`Trigger R`"},
@@ -325,8 +327,8 @@ constexpr std::array GAMECUBE_GAMEPAD{
 constexpr std::array WII_REMOTE_GAMEPAD{
     Binding{"Buttons/A", "`Button A`"},
     Binding{"Buttons/B", "`Trigger R`"},
-    Binding{"Buttons/1", "`Button X`"},
-    Binding{"Buttons/2", "`Button Y`"},
+    Binding{"Buttons/1", "`Button Y`"},
+    Binding{"Buttons/2", "`Button B`"},
     Binding{"Buttons/-", "View"},
     Binding{"Buttons/+", "Menu"},
     Binding{"Buttons/Home", "`Thumb R`"},
@@ -342,9 +344,9 @@ constexpr std::array WII_REMOTE_GAMEPAD{
     Binding{"IR/Dead Zone", "10.00"},
     Binding{"IR/Total Yaw", "37.50"},
     Binding{"IR/Total Pitch", "30.00"},
-    Binding{"Shake/X", "`Bumper R`"},
-    Binding{"Shake/Y", "`Bumper R`"},
-    Binding{"Shake/Z", "`Bumper R`"},
+    Binding{"Shake/X", "`Button X`"},
+    Binding{"Shake/Y", "`Button X`"},
+    Binding{"Shake/Z", "`Button X`"},
     Binding{"Tilt/Forward", "`Left Y+`"},
     Binding{"Tilt/Backward", "`Left Y-`"},
     Binding{"Tilt/Left", "`Left X-`"},
@@ -357,11 +359,11 @@ constexpr std::array WII_REMOTE_GAMEPAD{
 constexpr std::array NUNCHUK_GAMEPAD{
     Binding{"Buttons/A", "`Button A`"},
     Binding{"Buttons/B", "`Trigger R`"},
-    Binding{"Buttons/1", "`Button X`"},
-    Binding{"Buttons/2", "`Button Y`"},
+    Binding{"Buttons/1", "`Button Y`"},
+    Binding{"Buttons/2", "`Button B`"},
     Binding{"Buttons/-", "View"},
     Binding{"Buttons/+", "Menu"},
-    Binding{"Buttons/Home", "`Button B`"},
+    Binding{"Buttons/Home", "`Thumb L`"},
     Binding{"D-Pad/Up", "`Pad N`"},
     Binding{"D-Pad/Down", "`Pad S`"},
     Binding{"D-Pad/Left", "`Pad W`"},
@@ -375,9 +377,9 @@ constexpr std::array NUNCHUK_GAMEPAD{
     Binding{"IR/Dead Zone", "10.00"},
     Binding{"IR/Total Yaw", "37.50"},
     Binding{"IR/Total Pitch", "30.00"},
-    Binding{"Shake/X", "`Bumper R`"},
-    Binding{"Shake/Y", "`Bumper R`"},
-    Binding{"Shake/Z", "`Bumper R`"},
+    Binding{"Shake/X", "`Button X`"},
+    Binding{"Shake/Y", "`Button X`"},
+    Binding{"Shake/Z", "`Button X`"},
     Binding{"Tilt/Forward", "toggle(`Thumb R`) & `Right Y+`"},
     Binding{"Tilt/Backward", "toggle(`Thumb R`) & `Right Y-`"},
     Binding{"Tilt/Left", "toggle(`Thumb R`) & `Right X-`"},
@@ -388,9 +390,9 @@ constexpr std::array NUNCHUK_GAMEPAD{
     Binding{"Nunchuk/Stick/Down", "`Left Y-`"},
     Binding{"Nunchuk/Stick/Left", "`Left X-`"},
     Binding{"Nunchuk/Stick/Right", "`Left X+`"},
-    Binding{"Nunchuk/Shake/X", "`Thumb L`"},
-    Binding{"Nunchuk/Shake/Y", "`Thumb L`"},
-    Binding{"Nunchuk/Shake/Z", "`Thumb L`"},
+    Binding{"Nunchuk/Shake/X", "`Bumper R`"},
+    Binding{"Nunchuk/Shake/Y", "`Bumper R`"},
+    Binding{"Nunchuk/Shake/Z", "`Bumper R`"},
     Binding{"Rumble/Motor", "`Motor L` | `Motor R`"},
 };
 
@@ -963,12 +965,37 @@ bool DeviceSupportsMotion(const ciface::Core::Device& device)
   });
 }
 
-std::string FindDefaultGamepad()
+std::string FindDefaultGamepad(int player = 0)
 {
-  for (const std::string& id : g_controller_interface.GetAllDeviceStrings())
+  constexpr std::string_view prefix = "WGInput/";
+  const auto devices = g_controller_interface.GetAllDeviceStrings();
+
+  if (player >= 0)
   {
-    if (id.starts_with(GAMEPAD_SOURCE))
-      return id;
+    // Search for the device matching this player's index (e.g. WGInput/0/..., WGInput/1/...)
+    for (const std::string& id : devices)
+    {
+      if (id.starts_with(prefix))
+      {
+        size_t number = 0;
+        if (std::from_chars(id.data() + prefix.size(), id.data() + id.size(), number).ec ==
+                std::errc{} &&
+            number == static_cast<size_t>(player))
+        {
+          return id;
+        }
+      }
+    }
+  }
+
+  // Fallback to the first available gamepad only for player 0 or unassigned player (-1)
+  if (player <= 0)
+  {
+    for (const std::string& id : devices)
+    {
+      if (id.starts_with(GAMEPAD_SOURCE))
+        return id;
+    }
   }
   return {};
 }
@@ -1201,7 +1228,9 @@ std::string GetGameIniPath(const std::string& game_id)
 bool IsRunningGame(const std::string& game_id)
 {
   const Core::State state = Core::GetState(Core::System::GetInstance());
-  return !game_id.empty() && (state == Core::State::Running || state == Core::State::Paused) &&
+  return !game_id.empty() &&
+         (state == Core::State::Running || state == Core::State::Paused ||
+          state == Core::State::Starting) &&
          SConfig::GetInstance().GetGameID() == game_id;
 }
 
@@ -1234,6 +1263,7 @@ bool SaveGlobalSection(ControllerType type, int player, const Section& section)
   if (!controller)
     return false;
   const std::string path = GetIniPath(type);
+  File::CreateFullPath(path);
   Common::IniFile ini;
   ini.Load(path);
   ini.DeleteSection(controller->GetName());
@@ -1763,6 +1793,32 @@ void ApplyDraft(Section& section, ControllerType type, int player,
   }
 }
 
+void SetLiveExtension(ControllerType type, int player)
+{
+  if (!IsWii(type))
+    return;
+  ControllerEmu::EmulatedController* const controller = GetController(type, player);
+  if (!controller)
+    return;
+
+  const std::string_view target_extension = GetTypeInfo(type).extension;
+  for (const auto& group : controller->groups)
+  {
+    if (group->type != ControllerEmu::GroupType::Attachments)
+      continue;
+    auto* attachments = static_cast<ControllerEmu::Attachments*>(group.get());
+    const auto& list = attachments->GetAttachmentList();
+    for (u32 i = 0; i < list.size(); ++i)
+    {
+      if (list[i]->GetName() == target_extension)
+      {
+        attachments->SetSelectedAttachment(i);
+        break;
+      }
+    }
+  }
+}
+
 void LoadIntoController(ControllerType type, int player, const Section& section, bool save = true)
 {
   ControllerEmu::EmulatedController* const controller = GetController(type, player);
@@ -1770,6 +1826,8 @@ void LoadIntoController(ControllerType type, int player, const Section& section,
     return;
   Section copy = section;
   controller->LoadConfig(&copy);
+  if (IsWii(type))
+    SetLiveExtension(type, player);
   controller->UpdateReferences(g_controller_interface);
   if (save)
     GetInputConfig(type)->SaveConfig();
@@ -1781,10 +1839,10 @@ void LoadIntoController(ControllerType type, int player, const Section& section,
 MappingSaveResult StoreSection(ControllerType type, int player, const Section& section,
                                const std::string& game_id, bool replaces_other_kind = false)
 {
+  SaveGlobalSection(type, player, section);
+
   if (game_id.empty())
   {
-    if (!SaveGlobalSection(type, player, section))
-      return {false, "The controller settings could not be written"};
     // A running game with a profile of its own keeps using it.
     if (!UsesGameProfile(type, player))
       LoadIntoController(type, player, section, false);
@@ -1797,6 +1855,7 @@ MappingSaveResult StoreSection(ControllerType type, int player, const Section& s
 
   Common::IniFile game_ini;
   const std::string game_ini_path = GetGameIniPath(game_id);
+  File::CreateFullPath(game_ini_path);
   game_ini.Load(game_ini_path);
   game_ini.GetOrCreateSection("Controls")->Set(GetTitleProfileKey(type, player), setting);
   if (replaces_other_kind && type != ControllerType::GameBoyAdvance &&
@@ -1845,6 +1904,9 @@ void ConnectPort(ControllerType type, int player)
     const auto& source = Config::GetInfoForWiimoteSource(player);
     if (Config::Get(source) == WiimoteSource::None)
       Config::SetBaseOrCurrent(source, WiimoteSource::Emulated);
+    // Disconnect the GameCube port to prevent double input when using a Wii controller
+    const auto& port = Config::GetInfoForSIDevice(player);
+    Config::SetBaseOrCurrent(port, SerialInterface::SIDEVICE_NONE);
     return;
   }
 
@@ -1872,12 +1934,27 @@ void ConnectPort(ControllerType type, int player)
   default:
     break;
   }
+  // Disconnect the Wii Remote to prevent double input when using a GameCube controller
+  const auto& source = Config::GetInfoForWiimoteSource(player);
+  Config::SetBaseOrCurrent(source, WiimoteSource::None);
 }
 
 ControllerType GetWiiRemoteType(int player)
 {
   std::string extension;
   ReadLiveSection(ControllerType::WiiRemote, player).Get("Extension", &extension, "None");
+  if (extension.empty() || extension == "None")
+  {
+    const std::string game_id = InputMappingHost::GetRunningGameId();
+    if (!game_id.empty() && Core::System::GetInstance().IsWii())
+    {
+      const ControllerPreference pref = GetWiiControllerPreference(game_id);
+      if (pref == ControllerPreference::Classic)
+        return ControllerType::Classic;
+      if (pref == ControllerPreference::WiiRemoteNunchuk)
+        return ControllerType::WiiNunchuk;
+    }
+  }
   return TypeFromExtension(extension);
 }
 
@@ -1945,6 +2022,19 @@ bool InputMappingHost::ApplyDefaultGamepadMappings(int player, const std::string
   return true;
 }
 
+void InputMappingHost::DisconnectGamepad(int player)
+{
+  if (player <= 0 || player >= MAX_PLAYERS || NetPlay::IsNetPlayRunning() ||
+      Core::System::GetInstance().GetMovie().IsMovieActive())
+  {
+    return;
+  }
+
+  Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+  Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+  Config::Save();
+}
+
 void InputMappingHost::AssignGamepad(int player, const std::string& device)
 {
   if (player < 0 || player >= MAX_PLAYERS || !device.starts_with(GAMEPAD_SOURCE) ||
@@ -1955,6 +2045,11 @@ void InputMappingHost::AssignGamepad(int player, const std::string& device)
 
   const auto is_unmapped = [player](ControllerType type) {
     const Section section = ReadGlobalSection(type, player);
+    std::string current_device;
+    section.Get("Device", &current_device, "");
+    // If player > 0 still points to Player 1's gamepad or has no device set, consider it unmapped
+    if (player > 0 && (current_device.empty() || current_device == FindDefaultGamepad(0)))
+      return true;
     return std::ranges::none_of(GetMappingKeys(type, player), [&section](const std::string& key) {
       std::string expression;
       section.Get(key, &expression, "");
@@ -1964,13 +2059,272 @@ void InputMappingHost::AssignGamepad(int player, const std::string& device)
   if (is_unmapped(ControllerType::GameCube) && is_unmapped(ControllerType::WiiNunchuk))
     ApplyDefaultGamepadMappings(player, device);
 
-  const auto& port = Config::GetInfoForSIDevice(player);
-  if (Config::Get(port) == SerialInterface::SIDEVICE_NONE)
-    Config::SetBaseOrCurrent(port, SerialInterface::SIDEVICE_GC_CONTROLLER);
-  const auto& source = Config::GetInfoForWiimoteSource(player);
-  if (Config::Get(source) == WiimoteSource::None)
-    Config::SetBaseOrCurrent(source, WiimoteSource::Emulated);
+  const std::string game_id = GetRunningGameId();
+  if (!game_id.empty())
+  {
+    // A game is currently running: connect only the port appropriate for this game
+    const bool has_gc = ReadTitleSection(ControllerType::GameCube, player, game_id).has_value();
+    const bool has_wii = ReadTitleSection(ControllerType::WiiRemote, player, game_id).has_value();
+    const bool is_wii = Core::System::GetInstance().IsWii();
+
+    if (has_gc && !has_wii)
+    {
+      Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_GC_CONTROLLER);
+      Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+      if (std::optional<Section> title_sec = ReadTitleSection(ControllerType::GameCube, player, game_id))
+        LoadIntoController(ControllerType::GameCube, player, *title_sec, false);
+    }
+    else if (has_wii && !has_gc)
+    {
+      Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+      Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+      if (std::optional<Section> title_sec = ReadTitleSection(ControllerType::WiiRemote, player, game_id))
+      {
+        std::string ext;
+        title_sec->Get("Extension", &ext, "");
+        if (ext.empty() || ext == "None")
+        {
+          const ControllerPreference pref = GetWiiControllerPreference(game_id);
+          if (pref == ControllerPreference::Classic)
+          {
+            ext = "Classic";
+            title_sec->Set("Extension", "Classic");
+            StoreSection(ControllerType::Classic, player, *title_sec, game_id);
+          }
+          else if (pref == ControllerPreference::WiiRemoteNunchuk)
+          {
+            ext = "Nunchuk";
+            title_sec->Set("Extension", "Nunchuk");
+            StoreSection(ControllerType::WiiNunchuk, player, *title_sec, game_id);
+          }
+        }
+        const ControllerType ext_type = TypeFromExtension(ext);
+        LoadIntoController(ext_type, player, *title_sec, false);
+        SetLiveExtension(ext_type, player);
+      }
+    }
+    else if (!is_wii)
+    {
+      Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_GC_CONTROLLER);
+      Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+      Section section = BuildDefaultSection(ControllerType::GameCube, player, device);
+      StoreSection(ControllerType::GameCube, player, section, game_id, true);
+      LoadIntoController(ControllerType::GameCube, player, section, true);
+    }
+    else
+    {
+      const ControllerPreference pref = GetWiiControllerPreference(game_id);
+      if (pref == ControllerPreference::Classic)
+      {
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+        Section section = BuildDefaultSection(ControllerType::Classic, player, device);
+        section.Set("Extension", "Classic");
+        StoreSection(ControllerType::Classic, player, section, game_id, true);
+        LoadIntoController(ControllerType::Classic, player, section, true);
+        SetLiveExtension(ControllerType::Classic, player);
+      }
+      else if (pref == ControllerPreference::GameCube)
+      {
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_GC_CONTROLLER);
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+        Section section = BuildDefaultSection(ControllerType::GameCube, player, device);
+        StoreSection(ControllerType::GameCube, player, section, game_id, true);
+        LoadIntoController(ControllerType::GameCube, player, section, true);
+        SetLiveExtension(ControllerType::WiiRemote, player);
+      }
+      else
+      {
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+        Section section = BuildDefaultSection(ControllerType::WiiNunchuk, player, device);
+        section.Set("Extension", "Nunchuk");
+        StoreSection(ControllerType::WiiNunchuk, player, section, game_id, true);
+        LoadIntoController(ControllerType::WiiNunchuk, player, section, true);
+        SetLiveExtension(ControllerType::WiiNunchuk, player);
+      }
+    }
+  }
+  else
+  {
+    const auto& port = Config::GetInfoForSIDevice(player);
+    if (Config::Get(port) == SerialInterface::SIDEVICE_NONE)
+      Config::SetBaseOrCurrent(port, SerialInterface::SIDEVICE_GC_CONTROLLER);
+    const auto& source = Config::GetInfoForWiimoteSource(player);
+    if (Config::Get(source) == WiimoteSource::None)
+      Config::SetBaseOrCurrent(source, WiimoteSource::Emulated);
+  }
   Config::Save();
+}
+
+void InputMappingHost::OnGameStarted(const std::string& game_id)
+{
+  if (game_id.empty() || Core::System::GetInstance().GetMovie().IsMovieActive())
+  {
+    return;
+  }
+
+  const bool is_wii = Core::System::GetInstance().IsWii();
+  const bool is_netplay = NetPlay::IsNetPlayRunning();
+
+  for (int player = 0; player < MAX_PLAYERS; ++player)
+  {
+    std::string device = FindDefaultGamepad(player);
+    if (device.empty())
+    {
+      if (player == 0)
+      {
+        device = "WGInput/0/Xbox One Game Controller";
+      }
+      else
+      {
+        if (!is_netplay)
+        {
+          Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+          Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+        }
+        continue;
+      }
+    }
+
+    const bool has_gc_profile =
+        ReadTitleSection(ControllerType::GameCube, player, game_id).has_value();
+    const bool has_wii_profile =
+        ReadTitleSection(ControllerType::WiiRemote, player, game_id).has_value();
+
+    if (has_gc_profile || has_wii_profile)
+    {
+      if (!is_netplay)
+      {
+        // The user previously saved an explicit profile for this game. Respect their preference.
+        if (has_gc_profile && !has_wii_profile)
+        {
+          Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player),
+                                   SerialInterface::SIDEVICE_GC_CONTROLLER);
+          Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+          if (std::optional<Section> title_sec = ReadTitleSection(ControllerType::GameCube, player, game_id))
+            LoadIntoController(ControllerType::GameCube, player, *title_sec, false);
+        }
+        else if (has_wii_profile && !has_gc_profile)
+        {
+          Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+          Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+          if (std::optional<Section> title_sec = ReadTitleSection(ControllerType::WiiRemote, player, game_id))
+          {
+            std::string ext;
+            title_sec->Get("Extension", &ext, "");
+            if (ext.empty() || ext == "None")
+            {
+              const ControllerPreference pref = GetWiiControllerPreference(game_id);
+              if (pref == ControllerPreference::Classic)
+              {
+                ext = "Classic";
+                title_sec->Set("Extension", "Classic");
+                StoreSection(ControllerType::Classic, player, *title_sec, game_id);
+              }
+              else if (pref == ControllerPreference::WiiRemoteNunchuk)
+              {
+                ext = "Nunchuk";
+                title_sec->Set("Extension", "Nunchuk");
+                StoreSection(ControllerType::WiiNunchuk, player, *title_sec, game_id);
+              }
+            }
+            const ControllerType ext_type = TypeFromExtension(ext);
+            LoadIntoController(ext_type, player, *title_sec, false);
+            SetLiveExtension(ext_type, player);
+          }
+        }
+        else if (has_gc_profile && has_wii_profile)
+        {
+          const ControllerPreference pref = is_wii ? GetWiiControllerPreference(game_id) : ControllerPreference::GameCube;
+          if (pref == ControllerPreference::GameCube)
+          {
+            Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_GC_CONTROLLER);
+            Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+            if (std::optional<Section> title_sec = ReadTitleSection(ControllerType::GameCube, player, game_id))
+              LoadIntoController(ControllerType::GameCube, player, *title_sec, false);
+          }
+          else
+          {
+            Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+            Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+            if (std::optional<Section> title_sec = ReadTitleSection(ControllerType::WiiRemote, player, game_id))
+            {
+              std::string ext;
+              title_sec->Get("Extension", &ext, "");
+              if (ext.empty() || ext == "None")
+                ext = pref == ControllerPreference::Classic ? "Classic" : "Nunchuk";
+              const ControllerType ext_type = TypeFromExtension(ext);
+              LoadIntoController(ext_type, player, *title_sec, false);
+              SetLiveExtension(ext_type, player);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!is_wii)
+    {
+      if (!is_netplay)
+      {
+        // GameCube game: connect GameCube port, disconnect Wii Remote
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player),
+                                 SerialInterface::SIDEVICE_GC_CONTROLLER);
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+      }
+      Section section = BuildDefaultSection(ControllerType::GameCube, player, device);
+      StoreSection(ControllerType::GameCube, player, section, game_id, true);
+      LoadIntoController(ControllerType::GameCube, player, section, true);
+      continue;
+    }
+
+    // Wii game without a saved profile: apply the recommended controller preference
+    const ControllerPreference pref = GetWiiControllerPreference(game_id);
+
+    if (pref == ControllerPreference::Classic)
+    {
+      if (!is_netplay)
+      {
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+      }
+      Section section = BuildDefaultSection(ControllerType::Classic, player, device);
+      section.Set("Extension", "Classic");
+      StoreSection(ControllerType::Classic, player, section, game_id, true);
+      LoadIntoController(ControllerType::Classic, player, section, true);
+      SetLiveExtension(ControllerType::Classic, player);
+    }
+    else if (pref == ControllerPreference::GameCube)
+    {
+      if (!is_netplay)
+      {
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player),
+                                 SerialInterface::SIDEVICE_GC_CONTROLLER);
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::None);
+      }
+      Section section = BuildDefaultSection(ControllerType::GameCube, player, device);
+      StoreSection(ControllerType::GameCube, player, section, game_id, true);
+      LoadIntoController(ControllerType::GameCube, player, section, true);
+      SetLiveExtension(ControllerType::WiiRemote, player);
+    }
+    else
+    {
+      if (!is_netplay)
+      {
+        Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(player), WiimoteSource::Emulated);
+        Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(player), SerialInterface::SIDEVICE_NONE);
+      }
+      Section section = BuildDefaultSection(ControllerType::WiiNunchuk, player, device);
+      section.Set("Extension", "Nunchuk");
+      StoreSection(ControllerType::WiiNunchuk, player, section, game_id, true);
+      LoadIntoController(ControllerType::WiiNunchuk, player, section, true);
+      SetLiveExtension(ControllerType::WiiNunchuk, player);
+    }
+  }
+
+  if (!is_netplay)
+    Config::Save();
 }
 
 void InputMappingHost::AddMissingGBAMappings()
@@ -2164,6 +2518,14 @@ ControllerProfileDraft InputMappingHost::LoadProfileDraft(std::uint8_t player,
     {
       std::string extension;
       wii->Get("Extension", &extension, "None");
+      if (extension.empty() || extension == "None")
+      {
+        const ControllerPreference pref = GetWiiControllerPreference(game_id);
+        if (pref == ControllerPreference::Classic)
+          extension = "Classic";
+        else if (pref == ControllerPreference::WiiRemoteNunchuk)
+          extension = "Nunchuk";
+      }
       type = TypeFromExtension(extension);
       section = wii;
     }
@@ -2172,13 +2534,52 @@ ControllerProfileDraft InputMappingHost::LoadProfileDraft(std::uint8_t player,
       type = ControllerType::GameCube;
       section = gamecube;
     }
+    else if (IsRunningGame(game_id) && Core::System::GetInstance().IsWii())
+    {
+      const ControllerPreference pref = GetWiiControllerPreference(game_id);
+      if (pref == ControllerPreference::Classic)
+        type = ControllerType::Classic;
+      else if (pref == ControllerPreference::GameCube)
+        type = ControllerType::GameCube;
+      else
+        type = ControllerType::WiiNunchuk;
+    }
   }
 
   if (!section)
     section = ReadSectionToChange(type, player, {});
 
   m_last_type = GetTypeInfo(type).id;
-  return BuildDraft(type, player, title_id, *section, {});
+  ControllerProfileDraft draft = BuildDraft(type, player, title_id, *section, {});
+
+  // For Player 2, 3, and 4, automatically select their corresponding gamepad
+  // if the profile is still pointing to Player 1's gamepad or is unset.
+  if (player > 0)
+  {
+    const std::string expected_device = FindDefaultGamepad(player);
+    if (!expected_device.empty())
+    {
+      const std::string default_p1_device = FindDefaultGamepad(0);
+      if (draft.defaultDeviceId.empty() || draft.defaultDeviceId == default_p1_device)
+      {
+        draft.defaultDeviceId = expected_device;
+        if (!default_p1_device.empty())
+          std::erase(draft.attachedDeviceIds, default_p1_device);
+        if (std::ranges::find(draft.attachedDeviceIds, expected_device) ==
+            draft.attachedDeviceIds.end())
+        {
+          draft.attachedDeviceIds.push_back(expected_device);
+        }
+        for (auto& ds : draft.deviceSettings)
+        {
+          if (ds.deviceId == default_p1_device)
+            ds.deviceId = expected_device;
+        }
+      }
+    }
+  }
+
+  return draft;
 }
 
 ControllerProfileDraft
@@ -2216,7 +2617,7 @@ ControllerProfileDraft InputMappingHost::CreateDefaultProfile(std::uint8_t playe
   const ControllerType type = FindType(controller_type_id).value_or(GetPersistedType(player));
   std::string device(preferred_device_id);
   if (device.empty())
-    device = FindDefaultGamepad();
+    device = FindDefaultGamepad(player);
   if (device.empty())
     device = FindKeyboard();
 
@@ -2300,6 +2701,45 @@ InputMappingHost::WiiRemoteOptions InputMappingHost::GetWiiRemoteOptions(int pla
   section.Get("Options/Sideways Wiimote", &options.sideways, false);
   section.Get("Options/Upright Wiimote", &options.upright, false);
   section.Get("Extension", &extension, "None");
+
+  const std::string game_id = GetRunningGameId();
+  if (!game_id.empty() && Core::System::GetInstance().IsWii())
+  {
+    bool explicit_user_none = false;
+    std::string saved_ext;
+    if (const auto title_sec = ReadTitleSection(ControllerType::WiiRemote, player, game_id))
+    {
+      if (title_sec->Get("Extension", &saved_ext, "") && saved_ext == "None" &&
+          title_sec->Exists("Extension"))
+      {
+        explicit_user_none = true;
+      }
+    }
+
+    if (!explicit_user_none && (extension == "None" || extension.empty()))
+    {
+      ControllerPreference pref = GetWiiControllerPreference(game_id);
+      if (!saved_ext.empty() && saved_ext != "None")
+      {
+        if (saved_ext == "Classic")
+          pref = ControllerPreference::Classic;
+        else if (saved_ext == "Nunchuk")
+          pref = ControllerPreference::WiiRemoteNunchuk;
+      }
+
+      if (pref == ControllerPreference::Classic)
+      {
+        extension = "Classic";
+        SetLiveExtension(ControllerType::Classic, player);
+      }
+      else if (pref == ControllerPreference::WiiRemoteNunchuk)
+      {
+        extension = "Nunchuk";
+        SetLiveExtension(ControllerType::WiiNunchuk, player);
+      }
+    }
+  }
+
   options.type_id = GetTypeInfo(TypeFromExtension(extension)).id;
   return options;
 }
@@ -2344,6 +2784,7 @@ MappingSaveResult InputMappingHost::SetWiiRemoteExtension(int player, std::strin
         section.Set(std::string(binding.key), std::string(binding.expression));
     }
   }
+  SetLiveExtension(*type, player);
   return StoreSection(*type, player, section, game_id);
 }
 

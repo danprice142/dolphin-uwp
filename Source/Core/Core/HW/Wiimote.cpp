@@ -12,6 +12,7 @@
 #include "Core/Config/WiimoteSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
+#include "Core/HW/WiiControllerDatabase.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/IOS/IOS.h"
@@ -21,6 +22,7 @@
 #include "Core/System.h"
 #include "Core/WiiUtils.h"
 
+#include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
 #include "InputCommon/ControllerEmu/ControlGroup/ControlGroup.h"
 #include "InputCommon/InputConfig.h"
 
@@ -208,6 +210,48 @@ void LoadConfig()
 {
   s_config.LoadConfig();
   s_last_connect_request_counter.fill(0);
+
+  const auto& system = Core::System::GetInstance();
+  if (system.IsWii())
+  {
+    const std::string& game_id = SConfig::GetInstance().GetGameID();
+    if (!game_id.empty() && game_id != "00000000")
+    {
+      const auto pref = Core::HW::GetWiiControllerPreference(game_id);
+      for (int i = 0; i < 4; ++i)
+      {
+        auto* const wm = static_cast<WiimoteEmu::Wiimote*>(s_config.GetController(i));
+        if (!wm)
+          continue;
+        auto* const attachments = static_cast<ControllerEmu::Attachments*>(
+            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Attachments));
+        if (!attachments)
+          continue;
+
+        if (attachments->GetSelectedAttachment() == 0)
+        {
+          const auto& list = attachments->GetAttachmentList();
+          std::string_view target;
+          if (pref == Core::HW::ControllerPreference::Classic)
+            target = "Classic";
+          else if (pref == Core::HW::ControllerPreference::WiiRemoteNunchuk)
+            target = "Nunchuk";
+
+          if (!target.empty())
+          {
+            for (size_t a = 0; a < list.size(); ++a)
+            {
+              if (list[a]->GetName() == target)
+              {
+                attachments->SetSelectedAttachment(static_cast<u32>(a));
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 void GenerateDynamicInputTextures()

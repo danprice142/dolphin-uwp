@@ -322,6 +322,8 @@ add_library(core
   HW/WiimoteCommon/WiimoteConstants.h
   HW/WiimoteCommon/WiimoteHid.h
   HW/WiimoteCommon/WiimoteReport.h
+  HW/WiiControllerDatabase.cpp
+  HW/WiiControllerDatabase.h
   HW/WiimoteEmu/Camera.cpp
   HW/WiimoteEmu/Camera.h
   HW/WiimoteEmu/DesiredWiimoteState.cpp
